@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>お小遣い3人管理</title>
+  <style>
+    :root {
+      --bg:#f6f7fb;
+      --surface:#ffffff;
+      --card:#ffffff;
+      --text:#111827;
+      --sub:#6b7280;
+      --line:#e5e7eb;
+      --btn:#2563eb;
+      --btnHover:#1d4ed8;
+      --btnText:#ffffff;
+      --secondary:#f3f4f6;
+      --secondaryText:#111827;
+      --danger:#dc2626;
+      --dangerHover:#b91c1c;
+      --overlay: rgba(17,24,39,.35);
+      --shadow: 0 10px 30px rgba(17,24,39,.10);
+      --focus: 0 0 0 3px rgba(37,99,235,.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin:0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 14px;
+      padding-bottom: 90px;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 4px 0 10px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .row { display:flex; gap:10px; flex-wrap: wrap; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 1px 0 rgba(17,24,39,.02);
+    }
+
+    /* 3人を縦に並べて一瞥できるように */
+    .balances {
+      display:flex;
+      flex-direction: column;
+      gap:10px;
+    }
+
+    .pill {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1px 0 rgba(17,24,39,.02);
+      display:flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .pill:active { transform: translateY(1px); }
+
+    .pill.active {
+      border-color: rgba(37,99,235,.55);
+      box-shadow: var(--focus);
+    }
+
+    .pill .name { font-size: 14px; color: var(--sub); font-weight: 800; }
+    .pill .bal { font-size: 20px; font-weight: 900; color: var(--text); }
+
+    .grid { display:grid; grid-template-columns: 1fr; gap: 10px; }
+
+    label {
+      font-size: 12px;
+      color: var(--sub);
+      display:block;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(37,99,235,.65);
+      box-shadow: var(--focus);
+    }
+
+    textarea { resize: vertical; min-height: 44px; }
+
+    .btnrow { display:flex; gap:10px; flex-wrap: wrap; }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-weight: 800;
+      background: var(--btn);
+      color: var(--btnText);
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(17,24,39,.05);
+    }
+
+    button:hover { background: var(--btnHover); }
+    button:active { transform: translateY(1px); }
+
+    button.secondary {
+      background: var(--secondary);
+      color: var(--secondaryText);
+      border: 1px solid var(--line);
+    }
+
+    button.secondary:hover { background: #e9ecf2; }
+
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    button.danger:hover { background: var(--dangerHover); }
+
+    .list { margin-top: 10px; }
+
+    .tx {
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .tx:first-child { border-top: 0; }
+    .tx .left { min-width: 0; }
+    .tx .date { color: var(--sub); font-size: 12px; font-weight: 700; }
+    .tx .note {
+      margin-top: 2px;
+      font-size: 13px;
+      color: var(--sub);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .tx .amt { font-weight: 900; font-size: 16px; white-space: nowrap; }
+    .tx .amt.in { color: #059669; }
+    .tx .amt.out { color: #dc2626; }
+
+    .tx .del {
+      background: var(--surface);
+      color: var(--sub);
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-weight: 800;
+    }
+
+    .tx .del:hover { background: #f9fafb; color: var(--text); }
+
+    .muted { color: var(--sub); font-size: 13px; }
+
+    .footerbar {
+      position: fixed;
+      left:0; right:0; bottom:0;
+      background: rgba(255,255,255,.92);
+      border-top: 1px solid var(--line);
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+    }
+
+    .footerbar .inner {
+      max-width: 720px;
+      margin: 0 auto;
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .file { position: relative; overflow:hidden; }
+    .file input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--overlay);
+      display:none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 9999;
+    }
+
+    .modal-overlay.show { display:flex; }
+
+    .modal {
+      width: 100%;
+      max-width: 520px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-h { padding: 14px 14px 0; font-weight: 900; font-size: 16px; color: var(--text); }
+    .modal-b { padding: 10px 14px 14px; color: var(--sub); font-size: 14px; line-height: 1.35; white-space: pre-line; }
+    .modal-f { padding: 0 14px 14px; display:flex; gap:10px; justify-content: flex-end; flex-wrap: wrap; }
+    .modal-f button { min-width: 110px; }
+    .modal-input { padding: 0 14px 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>お小遣い（3人）</h1>
+
+    <div class="card">
+      <div class="balances" id="balances"></div>
+      <div class="muted" style="margin-top:8px;">
+        端末内に保存（localStorage）。必要なら下の「書き出し」でバックアップしてください。
+      </div>
+    </div>
+
+    <div style="height:10px;"></div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <div style="flex:1; min-width:160px;">
+            <label>日付</label>
+            <input id="date" type="date" />
+          </div>
+          <div style="flex:1; min-width:160px;">
+            <label>種別</label>
+            <select id="kind">
+              <option value="in">入金</option>
+              <option value="out">出金</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div style="flex:1; min-width:160px;">
+            <label>金額（円）</label>
+            <input id="amount" type="number" inputmode="numeric" min="0" step="1" placeholder="例: 500" />
+          </div>
+          <div style="flex:1; min-width:160px;">
+            <label>備考（任意）</label>
+            <input id="note" type="text" maxlength="200" placeholder="例: おやつ / ゲーム / お手伝い" />
+          </div>
+        </div>
+
+        <div class="btnrow" style="margin-top:10px;">
+          <button id="addBtn">追加</button>
+          <button class="secondary" id="adjustBtn" type="button">残高補正</button>
+          <button class="secondary" id="renameBtn" type="button">名前変更</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="align-items:baseline; justify-content: space-between;">
+          <div style="font-weight:900;">履歴</div>
+          <div class="muted" id="txCount"></div>
+        </div>
+        <div class="list" id="txList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footerbar">
+    <div class="inner">
+      <button class="secondary" id="exportBtn" type="button">書き出し（JSON）</button>
+      <button class="secondary file" id="importBtn" type="button">読み込み（JSON）<input id="importFile" type="file" accept="application/json" /></button>
+      <button class="danger" id="resetBtn" type="button">全消去</button>
+    </div>
+  </div>
+
+  <!-- Modal UI (prompt/alert/confirm代替) -->
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-h" id="modalTitle"></div>
+      <div class="modal-b" id="modalBody"></div>
+      <div class="modal-input" id="modalInputWrap" style="display:none;">
+        <label id="modalInputLabel" style="margin-bottom:6px;">入力</label>
+        <input id="modalInput" type="text" inputmode="numeric" />
+      </div>
+      <div class="modal-f" id="modalFooter"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const KEY = "allowance_app_v1";
+  const yen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 });
+
+  function uuid() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+  }
+
+  function todayISO() {
+    const d = new Date();
+    const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return z.toISOString().slice(0, 10);
+  }
+
+  function load() {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) {
+      const init = {
+        version: 1,
+        people: [
+          { id: "p1", name: "敦" },
+          { id: "p2", name: "凜太郎" },
+          { id: "p3", name: "塔子" }
+        ],
+        selectedPersonId: "p1",
+        tx: []
+      };
+      localStorage.setItem(KEY, JSON.stringify(init));
+      return init;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      localStorage.removeItem(KEY);
+      return load();
+    }
+  }
+
+  function save(state) {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  }
+
+  function calcBalance(state, personId) {
+    let bal = 0;
+    for (const t of state.tx) {
+      if (t.personId !== personId) continue;
+      bal += (t.kind === "in" ? 1 : -1) * t.amount;
+    }
+    return bal;
+  }
+
+  function sortTx(tx) {
+    // 日付 desc → 作成時刻 desc
+    return [...tx].sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (a.createdAt || 0) < (b.createdAt || 0) ? 1 : -1;
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+
+  function parseYenInput(input) {
+    const s = String(input ?? "").replace(/,/g, "").trim();
+    if (s === "") return { ok: false, value: null };
+    // 全角数字・全角マイナス対応
+    const normalized = s
+      .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0))
+      .replace(/－/g, "-");
+    const n = Number(normalized);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) return { ok: false, value: null };
+    return { ok: true, value: n };
+  }
+
+  // --- Modal helpers (Canvasプレビューでprompt/confirm/alertが無効な環境対策) ---
+  const modalOverlay = document.getElementById("modalOverlay");
+  const modalTitle = document.getElementById("modalTitle");
+  const modalBody = document.getElementById("modalBody");
+  const modalFooter = document.getElementById("modalFooter");
+  const modalInputWrap = document.getElementById("modalInputWrap");
+  const modalInput = document.getElementById("modalInput");
+  const modalInputLabel = document.getElementById("modalInputLabel");
+
+  let modalResolve = null;
+
+  function closeModal(result) {
+    modalOverlay.classList.remove("show");
+    modalOverlay.setAttribute("aria-hidden", "true");
+    modalFooter.innerHTML = "";
+    modalInputWrap.style.display = "none";
+    modalResolve && modalResolve(result);
+    modalResolve = null;
+  }
+
+  function showModal({ title, body, input, okText = "OK", cancelText = "キャンセル", danger = false }) {
+    return new Promise((resolve) => {
+      modalResolve = resolve;
+
+      modalTitle.textContent = title || "";
+      modalBody.textContent = body || "";
+
+      if (input) {
+        modalInputWrap.style.display = "block";
+        modalInputLabel.textContent = input.label || "入力";
+        modalInput.value = input.value ?? "";
+        modalInput.placeholder = input.placeholder || "";
+      } else {
+        modalInputWrap.style.display = "none";
+      }
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "secondary";
+      cancelBtn.textContent = cancelText;
+      cancelBtn.addEventListener("click", () => closeModal({ ok: false, value: null }));
+
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = danger ? "danger" : "";
+      okBtn.textContent = okText;
+      okBtn.addEventListener("click", () => {
+        const v = input ? modalInput.value : null;
+        closeModal({ ok: true, value: v });
+      });
+
+      modalFooter.appendChild(cancelBtn);
+      modalFooter.appendChild(okBtn);
+
+      modalOverlay.classList.add("show");
+      modalOverlay.setAttribute("aria-hidden", "false");
+
+      if (input) setTimeout(() => { try { modalInput.focus(); } catch {} }, 50);
+    });
+  }
+
+  function uiAlert(message, title = "確認") {
+    return showModal({ title, body: message, input: null, okText: "OK", cancelText: "閉じる" }).then(() => {});
+  }
+
+  function uiConfirm(message, title = "確認") {
+    return showModal({ title, body: message, input: null, okText: "OK", cancelText: "キャンセル" }).then(r => r.ok);
+  }
+
+  function uiPrompt({ title, body, label, value, placeholder }) {
+    return showModal({ title, body, input: { label, value, placeholder }, okText: "OK", cancelText: "キャンセル" })
+      .then(r => r.ok ? r.value : null);
+  }
+
+  modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) closeModal({ ok: false, value: null });
+  });
+
+  // DOM
+  const balancesEl = document.getElementById("balances");
+  const dateEl = document.getElementById("date");
+  const kindEl = document.getElementById("kind");
+  const amountEl = document.getElementById("amount");
+  const noteEl = document.getElementById("note");
+  const addBtn = document.getElementById("addBtn");
+  const adjustBtn = document.getElementById("adjustBtn");
+  const renameBtn = document.getElementById("renameBtn");
+  const txListEl = document.getElementById("txList");
+  const txCountEl = document.getElementById("txCount");
+  const exportBtn = document.getElementById("exportBtn");
+  const importFileEl = document.getElementById("importFile");
+  const resetBtn = document.getElementById("resetBtn");
+
+  dateEl.value = todayISO();
+
+  let state = load();
+
+  function renderBalances() {
+    balancesEl.innerHTML = "";
+    for (const p of state.people) {
+      const bal = calcBalance(state, p.id);
+      const div = document.createElement("div");
+      div.className = "pill" + (state.selectedPersonId === p.id ? " active" : "");
+      div.innerHTML = `<div class="name">${escapeHtml(p.name)}</div><div class="bal">${yen.format(bal)}</div>`;
+      div.addEventListener("click", () => {
+        state.selectedPersonId = p.id;
+        save(state);
+        renderAll();
+      });
+      balancesEl.appendChild(div);
+    }
+  }
+
+  function renderTx() {
+    const pid = state.selectedPersonId;
+    const list = sortTx(state.tx.filter((t) => t.personId === pid));
+    txCountEl.textContent = `${list.length} 件`;
+    txListEl.innerHTML = "";
+
+    if (list.length === 0) {
+      txListEl.innerHTML = `<div class="muted" style="padding:12px;">まだ履歴がありません。</div>`;
+      return;
+    }
+
+    for (const t of list) {
+      const row = document.createElement("div");
+      row.className = "tx";
+      const cls = t.kind === "in" ? "in" : "out";
+      const sign = t.kind === "in" ? "+" : "−";
+      row.innerHTML = `
+        <div class="left">
+          <div class="date">${t.date}</div>
+          <div class="note">${t.note ? escapeHtml(t.note) : ""}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="amt ${cls}">${sign}${yen.format(t.amount)}</div>
+          <button class="del" type="button" title="削除">削除</button>
+        </div>
+      `;
+      row.querySelector(".del").addEventListener("click", async () => {
+        const ok = await uiConfirm("この履歴を削除しますか？");
+        if (!ok) return;
+        state.tx = state.tx.filter((x) => x.id !== t.id);
+        save(state);
+        renderAll();
+      });
+      txListEl.appendChild(row);
+    }
+  }
+
+  function renderAll() {
+    renderBalances();
+    renderTx();
+  }
+
+  async function addTx() {
+    const amount = Number(amountEl.value);
+    if (!dateEl.value) { await uiAlert("日付を入れてください。"); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { await uiAlert("金額は1円以上で入力してください。"); return; }
+
+    state.tx.push({
+      id: uuid(),
+      personId: state.selectedPersonId,
+      date: dateEl.value,
+      kind: kindEl.value,
+      amount: Math.floor(amount),
+      note: (noteEl.value || "").trim(),
+      createdAt: Date.now()
+    });
+
+    save(state);
+    amountEl.value = "";
+    noteEl.value = "";
+    renderAll();
+  }
+
+  async function renamePeople() {
+    const names = state.people.map((p) => p.name);
+
+    const a = await uiPrompt({ title: "名前変更", body: "1人目の名前", label: "1人目", value: names[0] });
+    if (a === null) return;
+    const b = await uiPrompt({ title: "名前変更", body: "2人目の名前", label: "2人目", value: names[1] });
+    if (b === null) return;
+    const c = await uiPrompt({ title: "名前変更", body: "3人目の名前", label: "3人目", value: names[2] });
+    if (c === null) return;
+
+    state.people[0].name = a.trim() || names[0];
+    state.people[1].name = b.trim() || names[1];
+    state.people[2].name = c.trim() || names[2];
+
+    save(state);
+    renderAll();
+  }
+
+  async function adjustBalance() {
+    const pid = state.selectedPersonId;
+    const current = calcBalance(state, pid);
+
+    const input = await uiPrompt({
+      title: "残高補正",
+      body: "新しい残高（円）を入力してください。
+入力した金額に合わせるための補正履歴を1件追加します。",
+      label: "新しい残高（円）",
+      value: String(current),
+      placeholder: "例: 1500"
+    });
+
+    if (input === null) return;
+
+    const parsed = parseYenInput(input);
+    if (!parsed.ok) {
+      await uiAlert("整数の金額（円）を入力してください。
+例: 1500");
+      return;
+    }
+
+    const target = parsed.value;
+    const diff = target - current;
+
+    if (diff === 0) {
+      await uiAlert("残高は既に一致しています。");
+      return;
+    }
+
+    state.tx.push({
+      id: uuid(),
+      personId: pid,
+      date: dateEl.value || todayISO(),
+      kind: diff > 0 ? "in" : "out",
+      amount: Math.abs(diff),
+      note: `残高補正（目標: ${yen.format(target)}）`,
+      createdAt: Date.now()
+    });
+
+    save(state);
+    renderAll();
+  }
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `allowance_backup_${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJson(file) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const obj = JSON.parse(String(reader.result || ""));
+        if (!obj || !Array.isArray(obj.people) || !Array.isArray(obj.tx)) throw new Error("形式が違います");
+        obj.selectedPersonId = obj.selectedPersonId || (obj.people[0] && obj.people[0].id) || "p1";
+        obj.version = 1;
+        state = obj;
+        save(state);
+        renderAll();
+        await uiAlert("読み込みました。");
+      } catch (e) {
+        await uiAlert("読み込みに失敗しました（JSON形式を確認してください）。");
+      } finally {
+        importFileEl.value = "";
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  async function resetAll() {
+    const ok = await uiConfirm("全データを消去します。戻せません。よろしいですか？", "全消去");
+    if (!ok) return;
+    localStorage.removeItem(KEY);
+    state = load();
+    renderAll();
+  }
+
+  // --- Self tests (console.assert) ---
+  function runSelfTests() {
+    try {
+      const testState = {
+        people: [{ id: "p1", name: "T" }],
+        selectedPersonId: "p1",
+        tx: [
+          { id: "t1", personId: "p1", date: "2026-02-01", kind: "in", amount: 1000, createdAt: 1 },
+          { id: "t2", personId: "p1", date: "2026-02-01", kind: "out", amount: 250, createdAt: 2 }
+        ]
+      };
+      console.assert(calcBalance(testState, "p1") === 750, "calcBalance should be 750");
+
+      const sorted = sortTx(testState.tx);
+      console.assert(sorted[0].id === "t2", "sortTx should sort by createdAt desc when date ties");
+
+      console.assert(escapeHtml("<>&\"'") === "&lt;&gt;&amp;&quot;&#39;", "escapeHtml should escape HTML special chars");
+
+      console.assert(parseYenInput("1,500").ok && parseYenInput("1,500").value === 1500, "parseYenInput should parse commas");
+      console.assert(parseYenInput("１５００").ok && parseYenInput("１５００").value === 1500, "parseYenInput should parse full-width digits");
+      console.assert(!parseYenInput("abc").ok, "parseYenInput should reject non-numeric");
+    } catch (e) {
+      console.warn("Self tests failed:", e);
+    }
+  }
+
+  addBtn.addEventListener("click", () => { void addTx(); });
+  amountEl.addEventListener("keydown", (e) => { if (e.key === "Enter") void addTx(); });
+  adjustBtn.addEventListener("click", () => { void adjustBalance(); });
+  renameBtn.addEventListener("click", () => { void renamePeople(); });
+  exportBtn.addEventListener("click", exportJson);
+  importFileEl.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importJson(f);
+  });
+  resetBtn.addEventListener("click", () => { void resetAll(); });
+
+  runSelfTests();
+  renderAll();
+})();
+</script>
+</body>
+</html>
