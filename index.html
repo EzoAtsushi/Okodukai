@@ -86,8 +86,25 @@
       box-shadow: var(--focus);
     }
 
-    .pill .name { font-size: 14px; color: var(--sub); font-weight: 800; }
-    .pill .bal { font-size: 20px; font-weight: 900; color: var(--text); }
+    /* iPhoneの狭い幅でも名前が潰れて見えなくならないように */
+    .pill .name {
+      font-size: 14px;
+      color: var(--sub);
+      font-weight: 800;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pill .bal {
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--text);
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
 
     .grid { display:grid; grid-template-columns: 1fr; gap: 10px; }
 
@@ -309,7 +326,7 @@
       <div class="modal-b" id="modalBody"></div>
       <div class="modal-input" id="modalInputWrap" style="display:none;">
         <label id="modalInputLabel" style="margin-bottom:6px;">入力</label>
-        <input id="modalInput" type="text" inputmode="numeric" />
+        <input id="modalInput" type="text" />
       </div>
       <div class="modal-f" id="modalFooter"></div>
     </div>
@@ -377,7 +394,7 @@
   }
 
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
+    return String(s).replace(/[&<>\"']/g, (c) => ({
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",
@@ -414,6 +431,11 @@
     modalOverlay.setAttribute("aria-hidden", "true");
     modalFooter.innerHTML = "";
     modalInputWrap.style.display = "none";
+    // 入力設定を戻す
+    modalInput.value = "";
+    modalInput.removeAttribute("inputmode");
+    modalInput.type = "text";
+
     modalResolve && modalResolve(result);
     modalResolve = null;
   }
@@ -430,6 +452,9 @@
         modalInputLabel.textContent = input.label || "入力";
         modalInput.value = input.value ?? "";
         modalInput.placeholder = input.placeholder || "";
+        modalInput.type = input.type || "text";
+        if (input.inputMode) modalInput.setAttribute("inputmode", input.inputMode);
+        else modalInput.removeAttribute("inputmode");
       } else {
         modalInputWrap.style.display = "none";
       }
@@ -449,6 +474,7 @@
         closeModal({ ok: true, value: v });
       });
 
+      modalFooter.innerHTML = "";
       modalFooter.appendChild(cancelBtn);
       modalFooter.appendChild(okBtn);
 
@@ -467,9 +493,14 @@
     return showModal({ title, body: message, input: null, okText: "OK", cancelText: "キャンセル" }).then(r => r.ok);
   }
 
-  function uiPrompt({ title, body, label, value, placeholder }) {
-    return showModal({ title, body, input: { label, value, placeholder }, okText: "OK", cancelText: "キャンセル" })
-      .then(r => r.ok ? r.value : null);
+  function uiPrompt({ title, body, label, value, placeholder, inputMode }) {
+    return showModal({
+      title,
+      body,
+      input: { label, value, placeholder, type: "text", inputMode: inputMode || "text" },
+      okText: "OK",
+      cancelText: "キャンセル"
+    }).then(r => r.ok ? r.value : null);
   }
 
   modalOverlay.addEventListener("click", (e) => {
@@ -577,11 +608,11 @@
   async function renamePeople() {
     const names = state.people.map((p) => p.name);
 
-    const a = await uiPrompt({ title: "名前変更", body: "1人目の名前", label: "1人目", value: names[0] });
+    const a = await uiPrompt({ title: "名前変更", body: "1人目の名前", label: "1人目", value: names[0], inputMode: "text" });
     if (a === null) return;
-    const b = await uiPrompt({ title: "名前変更", body: "2人目の名前", label: "2人目", value: names[1] });
+    const b = await uiPrompt({ title: "名前変更", body: "2人目の名前", label: "2人目", value: names[1], inputMode: "text" });
     if (b === null) return;
-    const c = await uiPrompt({ title: "名前変更", body: "3人目の名前", label: "3人目", value: names[2] });
+    const c = await uiPrompt({ title: "名前変更", body: "3人目の名前", label: "3人目", value: names[2], inputMode: "text" });
     if (c === null) return;
 
     state.people[0].name = a.trim() || names[0];
@@ -598,19 +629,18 @@
 
     const input = await uiPrompt({
       title: "残高補正",
-      body: "新しい残高（円）を入力してください。
-入力した金額に合わせるための補正履歴を1件追加します。",
+      body: "新しい残高（円）を入力してください。\n入力した金額に合わせるための補正履歴を1件追加します。",
       label: "新しい残高（円）",
       value: String(current),
-      placeholder: "例: 1500"
+      placeholder: "例: 1500",
+      inputMode: "numeric"
     });
 
     if (input === null) return;
 
     const parsed = parseYenInput(input);
     if (!parsed.ok) {
-      await uiAlert("整数の金額（円）を入力してください。
-例: 1500");
+      await uiAlert("整数の金額（円）を入力してください。\n例: 1500");
       return;
     }
 
@@ -693,10 +723,11 @@
       const sorted = sortTx(testState.tx);
       console.assert(sorted[0].id === "t2", "sortTx should sort by createdAt desc when date ties");
 
-      console.assert(escapeHtml("<>&\"'") === "&lt;&gt;&amp;&quot;&#39;", "escapeHtml should escape HTML special chars");
+      console.assert(escapeHtml("<>&\\\"'") === "&lt;&gt;&amp;&quot;&#39;", "escapeHtml should escape HTML special chars");
 
       console.assert(parseYenInput("1,500").ok && parseYenInput("1,500").value === 1500, "parseYenInput should parse commas");
       console.assert(parseYenInput("１５００").ok && parseYenInput("１５００").value === 1500, "parseYenInput should parse full-width digits");
+      console.assert(parseYenInput("－5").ok && parseYenInput("－5").value === -5, "parseYenInput should parse full-width minus");
       console.assert(!parseYenInput("abc").ok, "parseYenInput should reject non-numeric");
     } catch (e) {
       console.warn("Self tests failed:", e);
