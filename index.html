@@ -202,7 +202,61 @@
 
     .tx .del:hover { background: #f9fafb; color: var(--text); }
 
+    .book {
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .book:first-child { border-top: 0; }
+    .book .left { min-width: 0; }
+    .book .month { color: var(--sub); font-size: 12px; font-weight: 700; }
+    .book .title { margin-top: 2px; font-size: 15px; font-weight: 800; }
+    .book .meta {
+      margin-top: 2px;
+      font-size: 13px;
+      color: var(--sub);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .muted { color: var(--sub); font-size: 13px; }
+
+    .statusline {
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--sub);
+    }
+
+    .badge.ok {
+      background: rgba(5,150,105,.08);
+      border-color: rgba(5,150,105,.2);
+      color: #047857;
+    }
+
+    .badge.pending {
+      background: rgba(217,119,6,.08);
+      border-color: rgba(217,119,6,.2);
+      color: #b45309;
+    }
 
     .footerbar {
       position: fixed;
@@ -308,6 +362,20 @@
         </div>
         <div class="list" id="txList"></div>
       </div>
+
+      <div class="card">
+        <div class="statusline">
+          <div>
+            <div style="font-weight:900;">本の購入履歴</div>
+            <div class="muted" id="bookSummary"></div>
+          </div>
+          <div class="badge pending" id="bookStatus">今月の本: 未記録</div>
+        </div>
+        <div class="btnrow" style="margin-bottom:10px;">
+          <button class="secondary" id="addBookBtn" type="button">本を記録</button>
+        </div>
+        <div class="list" id="bookList"></div>
+      </div>
     </div>
   </div>
 
@@ -352,14 +420,15 @@
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       const init = {
-        version: 1,
+        version: 2,
         people: [
           { id: "p1", name: "敦" },
           { id: "p2", name: "凜太郎" },
           { id: "p3", name: "塔子" }
         ],
         selectedPersonId: "p1",
-        tx: []
+        tx: [],
+        books: []
       };
       localStorage.setItem(KEY, JSON.stringify(init));
       return init;
@@ -374,6 +443,16 @@
 
   function save(state) {
     localStorage.setItem(KEY, JSON.stringify(state));
+  }
+
+  function normalizeState(rawState) {
+    const state = rawState && typeof rawState === "object" ? rawState : {};
+    state.version = 2;
+    state.people = Array.isArray(state.people) ? state.people : [];
+    state.tx = Array.isArray(state.tx) ? state.tx : [];
+    state.books = Array.isArray(state.books) ? state.books : [];
+    state.selectedPersonId = state.selectedPersonId || (state.people[0] && state.people[0].id) || "p1";
+    return state;
   }
 
   function calcBalance(state, personId) {
@@ -391,6 +470,21 @@
       if (a.date !== b.date) return a.date < b.date ? 1 : -1;
       return (a.createdAt || 0) < (b.createdAt || 0) ? 1 : -1;
     });
+  }
+
+  function monthKey(date) {
+    return String(date || "").slice(0, 7);
+  }
+
+  function sortBooks(books) {
+    return [...books].sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (a.createdAt || 0) < (b.createdAt || 0) ? 1 : -1;
+    });
+  }
+
+  function findBookForMonth(state, personId, month) {
+    return state.books.find((b) => b.personId === personId && monthKey(b.date) === month) || null;
   }
 
   function escapeHtml(s) {
@@ -493,11 +587,11 @@
     return showModal({ title, body: message, input: null, okText: "OK", cancelText: "キャンセル" }).then(r => r.ok);
   }
 
-  function uiPrompt({ title, body, label, value, placeholder, inputMode }) {
+  function uiPrompt({ title, body, label, value, placeholder, inputMode, type = "text" }) {
     return showModal({
       title,
       body,
-      input: { label, value, placeholder, type: "text", inputMode: inputMode || "text" },
+      input: { label, value, placeholder, type, inputMode: inputMode || type },
       okText: "OK",
       cancelText: "キャンセル"
     }).then(r => r.ok ? r.value : null);
@@ -518,13 +612,17 @@
   const renameBtn = document.getElementById("renameBtn");
   const txListEl = document.getElementById("txList");
   const txCountEl = document.getElementById("txCount");
+  const addBookBtn = document.getElementById("addBookBtn");
+  const bookListEl = document.getElementById("bookList");
+  const bookSummaryEl = document.getElementById("bookSummary");
+  const bookStatusEl = document.getElementById("bookStatus");
   const exportBtn = document.getElementById("exportBtn");
   const importFileEl = document.getElementById("importFile");
   const resetBtn = document.getElementById("resetBtn");
 
   dateEl.value = todayISO();
 
-  let state = load();
+  let state = normalizeState(load());
 
   function renderBalances() {
     balancesEl.innerHTML = "";
@@ -579,9 +677,49 @@
     }
   }
 
+  function renderBooks() {
+    const pid = state.selectedPersonId;
+    const list = sortBooks(state.books.filter((b) => b.personId === pid));
+    const currentMonthBook = findBookForMonth(state, pid, monthKey(todayISO()));
+
+    bookSummaryEl.textContent = `${list.length} 冊記録`;
+    bookStatusEl.textContent = currentMonthBook ? "今月の本: 購入済み" : "今月の本: 未記録";
+    bookStatusEl.className = `badge ${currentMonthBook ? "ok" : "pending"}`;
+    bookListEl.innerHTML = "";
+
+    if (list.length === 0) {
+      bookListEl.innerHTML = `<div class="muted" style="padding:12px;">まだ本の記録がありません。</div>`;
+      return;
+    }
+
+    for (const book of list) {
+      const row = document.createElement("div");
+      row.className = "book";
+      row.innerHTML = `
+        <div class="left">
+          <div class="month">${book.date}</div>
+          <div class="title">${escapeHtml(book.title)}</div>
+          <div class="meta">${book.note ? escapeHtml(book.note) : "メモなし"}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="del" type="button" title="削除">削除</button>
+        </div>
+      `;
+      row.querySelector(".del").addEventListener("click", async () => {
+        const ok = await uiConfirm("この本の記録を削除しますか？");
+        if (!ok) return;
+        state.books = state.books.filter((x) => x.id !== book.id);
+        save(state);
+        renderAll();
+      });
+      bookListEl.appendChild(row);
+    }
+  }
+
   function renderAll() {
     renderBalances();
     renderTx();
+    renderBooks();
   }
 
   async function addTx() {
@@ -666,6 +804,64 @@
     renderAll();
   }
 
+  async function addBook() {
+    const pid = state.selectedPersonId;
+    const thisMonth = monthKey(todayISO());
+    const existing = findBookForMonth(state, pid, thisMonth);
+
+    if (existing) {
+      const ok = await uiConfirm("この子は今月分の本をすでに記録しています。追加でもう1冊記録しますか？", "本を記録");
+      if (!ok) return;
+    }
+
+    const date = await uiPrompt({
+      title: "本を記録",
+      body: "購入日を入力してください。",
+      label: "購入日",
+      value: todayISO(),
+      type: "date"
+    });
+    if (date === null) return;
+    if (!date) {
+      await uiAlert("購入日を入力してください。");
+      return;
+    }
+
+    const title = await uiPrompt({
+      title: "本を記録",
+      body: "本のタイトルを入力してください。",
+      label: "タイトル",
+      value: "",
+      placeholder: "例: かいけつゾロリ"
+    });
+    if (title === null) return;
+    if (!title.trim()) {
+      await uiAlert("タイトルを入力してください。");
+      return;
+    }
+
+    const note = await uiPrompt({
+      title: "本を記録",
+      body: "メモがあれば入力してください。空欄でも大丈夫です。",
+      label: "メモ",
+      value: "",
+      placeholder: "例: 誕生日に購入 / 書店名など"
+    });
+    if (note === null) return;
+
+    state.books.push({
+      id: uuid(),
+      personId: pid,
+      date,
+      title: title.trim(),
+      note: note.trim(),
+      createdAt: Date.now()
+    });
+
+    save(state);
+    renderAll();
+  }
+
   function exportJson() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -684,9 +880,7 @@
       try {
         const obj = JSON.parse(String(reader.result || ""));
         if (!obj || !Array.isArray(obj.people) || !Array.isArray(obj.tx)) throw new Error("形式が違います");
-        obj.selectedPersonId = obj.selectedPersonId || (obj.people[0] && obj.people[0].id) || "p1";
-        obj.version = 1;
-        state = obj;
+        state = normalizeState(obj);
         save(state);
         renderAll();
         await uiAlert("読み込みました。");
@@ -703,7 +897,7 @@
     const ok = await uiConfirm("全データを消去します。戻せません。よろしいですか？", "全消去");
     if (!ok) return;
     localStorage.removeItem(KEY);
-    state = load();
+    state = normalizeState(load());
     renderAll();
   }
 
@@ -729,6 +923,13 @@
       console.assert(parseYenInput("１５００").ok && parseYenInput("１５００").value === 1500, "parseYenInput should parse full-width digits");
       console.assert(parseYenInput("－5").ok && parseYenInput("－5").value === -5, "parseYenInput should parse full-width minus");
       console.assert(!parseYenInput("abc").ok, "parseYenInput should reject non-numeric");
+      console.assert(monthKey("2026-03-21") === "2026-03", "monthKey should return YYYY-MM");
+      console.assert(findBookForMonth({
+        books: [
+          { personId: "p1", date: "2026-03-01", title: "A" },
+          { personId: "p1", date: "2026-02-01", title: "B" }
+        ]
+      }, "p1", "2026-03").title === "A", "findBookForMonth should find this month's book");
     } catch (e) {
       console.warn("Self tests failed:", e);
     }
@@ -738,6 +939,7 @@
   amountEl.addEventListener("keydown", (e) => { if (e.key === "Enter") void addTx(); });
   adjustBtn.addEventListener("click", () => { void adjustBalance(); });
   renameBtn.addEventListener("click", () => { void renamePeople(); });
+  addBookBtn.addEventListener("click", () => { void addBook(); });
   exportBtn.addEventListener("click", exportJson);
   importFileEl.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
