@@ -143,14 +143,38 @@
 
     textarea { resize: vertical; min-height: 44px; }
 
+    .entry-card {
+      overflow: hidden;
+    }
+
     .entry-card .row > div {
       min-width: 0 !important;
     }
 
-    @media (max-width: 430px) {
+    .entry-card input[type="date"] {
+      -webkit-appearance: none;
+      appearance: none;
+      display: block;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
+      text-align: left;
+    }
+
+    .entry-card input[type="date"]::-webkit-date-and-time-value {
+      text-align: left;
+    }
+
+    @media (max-width: 640px) {
       .entry-card .row {
         display: grid;
         grid-template-columns: 1fr;
+      }
+
+      .entry-card .row > div {
+        width: 100% !important;
+        max-width: 100%;
+        flex: 0 0 100% !important;
       }
     }
 
