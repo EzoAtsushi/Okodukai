@@ -302,6 +302,15 @@
       color: #b45309;
     }
 
+    .trend-chart {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+
     .footerbar {
       position: fixed;
       left:0; right:0; bottom:0;
@@ -366,6 +375,19 @@
     <div style="height:10px;"></div>
 
     <div class="grid">
+      <div class="card">
+        <div class="statusline">
+          <div>
+            <div style="font-weight:900;">過去12か月の残高推移</div>
+            <div class="muted" id="trendSummary"></div>
+          </div>
+        </div>
+        <canvas class="trend-chart" id="trendChart" width="360" height="230" role="img"></canvas>
+        <div class="btnrow" style="margin-top:10px;">
+          <button id="shareBtn" type="button">LINEで共有</button>
+        </div>
+      </div>
+
       <div class="card entry-card">
         <div class="row">
           <div style="flex:1; min-width:160px;">
@@ -531,6 +553,162 @@
     return state.books.find((b) => b.personId === personId && monthKey(b.date) === month) || null;
   }
 
+  function lastTwelveMonths(endDate = todayISO()) {
+    const [year, month] = String(endDate).split("-").map(Number);
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(year, month - 12 + index, 1);
+      const monthNumber = date.getMonth() + 1;
+      return {
+        year: date.getFullYear(),
+        month: monthNumber,
+        key: `${date.getFullYear()}-${String(monthNumber).padStart(2, "0")}`,
+        label: `${monthNumber}月`
+      };
+    });
+  }
+
+  function getMonthlyBalances(state, personId, endDate = todayISO()) {
+    const personTx = state.tx.filter((t) => t.personId === personId && /^\d{4}-\d{2}-\d{2}$/.test(t.date));
+    return lastTwelveMonths(endDate).map((month) => {
+      const balance = personTx.reduce((total, tx) => {
+        if (tx.date > `${month.key}-31`) return total;
+        return total + (tx.kind === "in" ? 1 : -1) * tx.amount;
+      }, 0);
+      return { ...month, balance };
+    });
+  }
+
+  function axisYen(value) {
+    return `¥${Math.round(value).toLocaleString("ja-JP")}`;
+  }
+
+  function drawTrendChart(canvas, points, personName, width, height, pixelRatio = 1) {
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#fbfdff";
+    ctx.fillRect(0, 0, width, height);
+
+    const scale = width / 360;
+    const titleFont = `${Math.round(16 * scale)}px "Hiragino Sans", "Noto Sans JP", sans-serif`;
+    const subFont = `${Math.round(11 * scale)}px "Hiragino Sans", "Noto Sans JP", sans-serif`;
+    const padding = {
+      top: 66 * scale,
+      right: 16 * scale,
+      bottom: 38 * scale,
+      left: 66 * scale
+    };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const values = points.map((point) => point.balance);
+    let minValue = Math.min(...values);
+    let maxValue = Math.max(...values);
+    const rawRange = maxValue - minValue;
+    const margin = rawRange > 0 ? rawRange * 0.16 : Math.max(Math.abs(maxValue) * 0.16, 1000);
+    minValue -= margin;
+    maxValue += margin;
+    const range = maxValue - minValue || 1;
+
+    ctx.fillStyle = "#111827";
+    ctx.font = `800 ${titleFont}`;
+    ctx.fillText(`${personName}のお小遣い推移`, padding.left, 28 * scale);
+    ctx.fillStyle = "#6b7280";
+    ctx.font = `700 ${subFont}`;
+    ctx.fillText("過去12か月の月末残高", padding.left, 48 * scale);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#2563eb";
+    ctx.font = `900 ${Math.round(15 * scale)}px "Hiragino Sans", "Noto Sans JP", sans-serif`;
+    ctx.fillText(`現在 ${yen.format(values[values.length - 1] || 0)}`, width - padding.right, 34 * scale);
+    ctx.textAlign = "left";
+
+    ctx.font = `700 ${subFont}`;
+    for (let index = 0; index <= 4; index += 1) {
+      const value = maxValue - (range * index / 4);
+      const y = padding.top + (chartHeight * index / 4);
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+      ctx.fillStyle = "#6b7280";
+      ctx.textAlign = "right";
+      ctx.fillText(axisYen(value), padding.left - (8 * scale), y + (4 * scale));
+    }
+    ctx.textAlign = "left";
+
+    const getX = (index) => padding.left + (chartWidth * index / (points.length - 1));
+    const getY = (value) => padding.top + ((maxValue - value) / range) * chartHeight;
+    const fillGradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+    fillGradient.addColorStop(0, "rgba(37,99,235,.24)");
+    fillGradient.addColorStop(1, "rgba(37,99,235,0)");
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = getX(index);
+      const y = getY(point.balance);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(getX(points.length - 1), height - padding.bottom);
+    ctx.lineTo(getX(0), height - padding.bottom);
+    ctx.closePath();
+    ctx.fillStyle = fillGradient;
+    ctx.fill();
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = getX(index);
+      const y = getY(point.balance);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#2563eb";
+    ctx.lineWidth = 3 * scale;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    const labelStep = width < 460 ? 2 : 1;
+    points.forEach((point, index) => {
+      const x = getX(index);
+      const y = getY(point.balance);
+      ctx.beginPath();
+      ctx.fillStyle = "#ffffff";
+      ctx.arc(x, y, 4.5 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2 * scale;
+      ctx.stroke();
+
+      if (index % labelStep === 0 || index === points.length - 1) {
+        ctx.fillStyle = "#6b7280";
+        ctx.font = `700 ${subFont}`;
+        ctx.textAlign = "center";
+        ctx.fillText(point.label, x, height - (14 * scale));
+      }
+    });
+    ctx.textAlign = "left";
+  }
+
+  function buildTrendShareText(personName, points) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    return [
+      `${personName}のお小遣い`,
+      `現在の残高: ${yen.format(last.balance)}`,
+      `対象期間: ${first.year}年${first.month}月 - ${last.year}年${last.month}月`,
+      "月末残高の推移グラフを共有します。"
+    ].join("\n");
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>\"']/g, (c) => ({
       "&": "&amp;",
@@ -660,6 +838,9 @@
   const bookListEl = document.getElementById("bookList");
   const bookSummaryEl = document.getElementById("bookSummary");
   const bookStatusEl = document.getElementById("bookStatus");
+  const trendChartEl = document.getElementById("trendChart");
+  const trendSummaryEl = document.getElementById("trendSummary");
+  const shareBtn = document.getElementById("shareBtn");
   const exportBtn = document.getElementById("exportBtn");
   const importFileEl = document.getElementById("importFile");
   const resetBtn = document.getElementById("resetBtn");
@@ -760,9 +941,25 @@
     }
   }
 
+  function renderTrend() {
+    const person = state.people.find((p) => p.id === state.selectedPersonId);
+    const personName = person ? person.name : "お小遣い";
+    const points = getMonthlyBalances(state, state.selectedPersonId);
+    const first = points[0];
+    const last = points[points.length - 1];
+    const parentWidth = trendChartEl.parentElement ? trendChartEl.parentElement.clientWidth : 360;
+    const width = Math.max(280, Math.round(parentWidth));
+    const height = Math.round(width * 0.64);
+
+    trendSummaryEl.textContent = `${first.year}年${first.month}月 - ${last.year}年${last.month}月`;
+    trendChartEl.setAttribute("aria-label", `${personName}の過去12か月の月末残高推移`);
+    drawTrendChart(trendChartEl, points, personName, width, height, Math.min(window.devicePixelRatio || 1, 2));
+  }
+
   function renderAll() {
     renderBalances();
     renderTx();
+    renderTrend();
     renderBooks();
   }
 
@@ -906,6 +1103,40 @@
     renderAll();
   }
 
+  async function shareTrend() {
+    const person = state.people.find((p) => p.id === state.selectedPersonId);
+    const personName = person ? person.name : "お小遣い";
+    const points = getMonthlyBalances(state, state.selectedPersonId);
+    const text = buildTrendShareText(personName, points);
+    const shareCanvas = document.createElement("canvas");
+    drawTrendChart(shareCanvas, points, personName, 1080, 690);
+
+    try {
+      const blob = await canvasToBlob(shareCanvas);
+      if (!blob) throw new Error("グラフ画像を作成できませんでした。");
+
+      const title = `${personName}のお小遣い推移`;
+      const file = new File([blob], `okodukai_${todayISO()}.png`, { type: "image/png" });
+      if (navigator.share) {
+        const shareData = { title, text };
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) shareData.files = [file];
+        await navigator.share(shareData);
+        return;
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        await uiAlert("この端末では共有画面を開けないため、共有文をコピーしました。");
+        return;
+      }
+
+      await uiAlert(text, "共有する内容");
+    } catch (error) {
+      if (error && error.name === "AbortError") return;
+      await uiAlert("LINEへの共有を開始できませんでした。Safariで開いてもう一度試してください。");
+    }
+  }
+
   function exportJson() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -974,6 +1205,10 @@
           { personId: "p1", date: "2026-02-01", title: "B" }
         ]
       }, "p1", "2026-03").title === "A", "findBookForMonth should find this month's book");
+
+      const monthly = getMonthlyBalances(testState, "p1", "2026-03-21");
+      console.assert(monthly.length === 12, "getMonthlyBalances should return 12 months");
+      console.assert(monthly[monthly.length - 1].balance === 750, "getMonthlyBalances should calculate the latest balance");
     } catch (e) {
       console.warn("Self tests failed:", e);
     }
@@ -984,12 +1219,14 @@
   adjustBtn.addEventListener("click", () => { void adjustBalance(); });
   renameBtn.addEventListener("click", () => { void renamePeople(); });
   addBookBtn.addEventListener("click", () => { void addBook(); });
+  shareBtn.addEventListener("click", () => { void shareTrend(); });
   exportBtn.addEventListener("click", exportJson);
   importFileEl.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) importJson(f);
   });
   resetBtn.addEventListener("click", () => { void resetAll(); });
+  window.addEventListener("resize", () => { window.requestAnimationFrame(renderTrend); });
 
   runSelfTests();
   renderAll();
